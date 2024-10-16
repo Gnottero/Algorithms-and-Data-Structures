@@ -49,6 +49,13 @@ int main() {
     int len, cmd, argNum;
     char commands[CMD_SIZE][MAX_SIZE] = {"date", "partenza", "capolinea", "ritardo", "ritardo_tot", "ordina_date", "ordina_codice", "ordina_partenza", "ordina_arrivo", "ricerca_lineare", "ricerca_dicotomica", "fine"}; 
     char **strArray, outputPath[MAX_SIZE];
+    ride **orderedDate, **orderedCode, **orderedDep, **orderedDest;
+
+    orderedDate = malloc(len * sizeof(void *));
+    orderedCode = malloc(len * sizeof(void *));
+    orderedDep = malloc(len * sizeof(void *));
+    orderedDest = malloc(len * sizeof(void *));
+    
 
     printf("Inserire il nome del file contente le corse: ");
     ride **rides = readDataFromFile(&len);
@@ -56,10 +63,32 @@ int main() {
     if (rides != NULL) {
         printf("Inserire un comando tra i seguenti: \n");
         printCommands(commands);
+
+        memcpy(orderedDate, rides, len * sizeof(void *));
+        memcpy(orderedCode, rides, len * sizeof(void *));
+        memcpy(orderedDep, rides, len * sizeof(void *));
+        memcpy(orderedDest, rides, len * sizeof(void *));
+
+        sortByDate(orderedDate, len);
+        sortByCode(orderedCode, len);
+        sortByDep(orderedDep, len);
+        sortByDest(orderedDest, len);
     
         do {
             cmd = leggiComando(commands, &strArray, &argNum, outputPath);
-            execCommand(cmd, rides, strArray, len, argNum, outputPath);
+            switch (cmd) {
+                case r_ordina_date:
+                    execCommand(cmd, orderedDate, strArray, len, argNum, outputPath);
+                case r_ordina_codice:
+                    execCommand(cmd, orderedCode, strArray, len, argNum, outputPath);
+                case r_ordina_partenza:
+                    execCommand(cmd, orderedDep, strArray, len, argNum, outputPath);
+                case r_ordina_arrivo:
+                    execCommand(cmd, orderedDest, strArray, len, argNum, outputPath);
+                default:
+                    execCommand(cmd, rides, strArray, len, argNum, outputPath);
+
+            }
         } while (cmd != -1 && cmd != r_fine);
 
     } else {
@@ -175,26 +204,8 @@ void execCommand(comando_e cmd, ride **rides, char **strArray, int len, int argN
             }
             fprintf(file ? file : stdout, "Il ritardo complessivo delle corse identificate dal codice %s è stato di %d minuti\n", strArray[0], delay); 
             break;
-        case r_ordina_date:
+        case r_ordina_date : case r_ordina_codice : case r_ordina_partenza : case r_ordina_arrivo:
             sortByDate(rides, len);
-            for ( ; i < len; ++i) {
-                printWithConversion(rides[i], file);
-            }
-            break;
-        case r_ordina_codice:
-            sortByCode(rides, len);
-            for ( ; i < len; ++i) {
-                printWithConversion(rides[i], file);
-            }
-            break;
-        case r_ordina_partenza:
-            sortByDep(rides, len);
-            for ( ; i < len; ++i) {
-                printWithConversion(rides[i], file);
-            }
-            break;
-        case r_ordina_arrivo:
-            sortByDest(rides, len);
             for ( ; i < len; ++i) {
                 printWithConversion(rides[i], file);
             }
@@ -204,11 +215,13 @@ void execCommand(comando_e cmd, ride **rides, char **strArray, int len, int argN
             for ( ; idx[i] != -1; ++i) {
                 printWithConversion(rides[idx[i]], file);
             }
+            break;
         case r_ricerca_dicotomica:
             idx = binarySearch(rides, len, strArray[0]);
             for ( ; idx[i] != -1; ++i) {
                 printWithConversion(rides[idx[i]], file);
             }
+            break;
     }
 
     if (file)
