@@ -35,13 +35,9 @@ void printCommands(char commands[][MAX_SIZE]);
 
 void execCommand(comando_e cmd, ride **rides, char **strArray, int len, int argNum, char *outputPath);
 void printWithConversion(ride *ride, FILE *file);
-void sortByDate(ride **rides, int len);
-void sortByCode(ride **rides, int len);
-void sortByDep(ride **rides, int len);
-void sortByDest(ride **rides, int len);
-int *linearSearch(ride **rides, int len, char *name);
-int *binarySearch(ride **rides, int len, char *name);
-
+void sortByCriteria(ride **rides, int len, int value);
+void linearSearch(int len, int nameLen, ride **rides, char *name, FILE *file);
+void binarySearch(int left, int right, int nameLen, ride **rides, char *name, FILE *file);
 void getTrimmedLine(char *line);
 
 
@@ -113,7 +109,7 @@ comando_e leggiComando(char commands[][MAX_SIZE], char ***strArray, int *argNum,
 
 
 void execCommand(comando_e cmd, ride **rides, char **strArray, int len, int argNum, char *outputPath) {
-    int fyear, fmonth, fday, syear, smonth, sday, i = 0, delay = 0, fdate, sdate, *idx;
+    int fyear, fmonth, fday, syear, smonth, sday, i, delay = 0, fdate, sdate, nameLen;
     static int const cmdArgsNum[CMD_SIZE] = {2, 1, 1, 2, 1, 0, 0, 0, 0, 1, 1, 0};
     FILE *file = NULL;
 
@@ -135,7 +131,6 @@ void execCommand(comando_e cmd, ride **rides, char **strArray, int len, int argN
         }
     }
 
-
     if (cmd == r_date || cmd == r_ritardo) {
         sscanf(strArray[0], "%d/%d/%d", &fyear, &fmonth, &fday);
         sscanf(strArray[1], "%d/%d/%d", &syear, &smonth, &sday);
@@ -143,72 +138,58 @@ void execCommand(comando_e cmd, ride **rides, char **strArray, int len, int argN
         sdate = syear * 372 + (smonth - 1) * 31 + sday - 1;
     }
 
-    switch (cmd) {
-        case r_date:
-            for ( ; i < len; ++i) {
-                if (rides[i]->date >= fdate && rides[i]->date <= sdate)
+    if (cmd == r_ricerca_lineare || cmd == r_ricerca_dicotomica) {
+        nameLen = strlen(strArray[0]);
+    }
+
+    for (i = 0; i < len && cmd >= r_date && cmd <= r_ritardo_tot; ++i) {
+        switch (cmd) {
+            case r_date:
+                if (rides[i] -> date >= fdate && rides[i] -> date <= sdate) {
                     printWithConversion(rides[i], file);
-            }
-            break;
-        case r_partenza:
-            for ( ; i < len; ++i) {
-                if (strcmp(rides[i]->depPos, strArray[0]) == 0)
+                }
+                break;
+            case r_partenza:
+                if (strcmp(rides[i] -> depPos, strArray[0]) == 0) {
                     printWithConversion(rides[i], file);
-            }
-            break;
-        case r_capolinea:
-            for ( ; i < len; ++i) {
-                if (strcmp(rides[i]->destPos, strArray[0]) == 0)
+                }
+                break;
+            case r_capolinea:
+                if (strcmp(rides[i] -> destPos, strArray[0]) == 0) {
                     printWithConversion(rides[i], file);
-            }
-            break;
-        case r_ritardo:
-            for ( ; i < len; ++i) {
-                if (rides[i]->date >= fdate && rides[i]->date <= sdate && rides[i]->delay > 0)
+                }
+                break;
+            case r_ritardo:
+                if (rides[i]->date >= fdate && rides[i]->date <= sdate && rides[i]->delay > 0) {
                     printWithConversion(rides[i], file);
-            }
-            break;
-        case r_ritardo_tot:
-            for ( ; i < len; ++i) {
-                if (strcmp(rides[i]->rideCode, strArray[0]) == 0 && rides[i]->delay)
+                }
+                break;
+            case r_ritardo_tot:
+                if (strcmp(rides[i] -> rideCode, strArray[0]) == 0 && rides[i] -> delay) {
                     delay += rides[i]->delay;
-            }
-            fprintf(file ? file : stdout, "Il ritardo complessivo delle corse identificate dal codice %s è stato di %d minuti\n", strArray[0], delay); 
-            break;
-        case r_ordina_date:
-            sortByDate(rides, len);
-            for ( ; i < len; ++i) {
-                printWithConversion(rides[i], file);
-            }
-            break;
-        case r_ordina_codice:
-            sortByCode(rides, len);
-            for ( ; i < len; ++i) {
-                printWithConversion(rides[i], file);
-            }
-            break;
-        case r_ordina_partenza:
-            sortByDep(rides, len);
-            for ( ; i < len; ++i) {
-                printWithConversion(rides[i], file);
-            }
-            break;
-        case r_ordina_arrivo:
-            sortByDest(rides, len);
-            for ( ; i < len; ++i) {
+                }
+                break;
+        }
+    }
+
+    if (cmd == r_ritardo_tot) {
+        fprintf(file ? file : stdout, "Il ritardo complessivo delle corse identificate dal codice %s è stato di %d minuti\n", strArray[0], delay);
+    }
+
+    switch (cmd) {
+        case r_ordina_date : case r_ordina_codice : case r_ordina_partenza : case r_ordina_arrivo:
+            sortByCriteria(rides, len, cmd);
+            for (i = 0; i < len; ++i) {
                 printWithConversion(rides[i], file);
             }
             break;
         case r_ricerca_lineare:
-            idx = linearSearch(rides, len, strArray[0]);
-            for ( ; idx[i] != -1; ++i) {
-                printWithConversion(rides[idx[i]], file);
-            }
+            linearSearch(len, nameLen, rides, strArray[0], file);
+            break;
         case r_ricerca_dicotomica:
-            idx = binarySearch(rides, len, strArray[0]);
-            for ( ; idx[i] != -1; ++i) {
-                printWithConversion(rides[idx[i]], file);
-            }
+            sortByCriteria(rides, len, r_ordina_partenza);
+            binarySearch(0, len - 1, strlen(strArray[0]), rides, strArray[0], file);
+            break;
     }
 
     if (file)
@@ -251,6 +232,7 @@ ride **readDataFromFile(int *len) {
 }
 
 
+
 void getTrimmedLine(char *line) {
     fgets(line, MAX_SIZE, stdin);
     int strLen = strlen(line);
@@ -260,123 +242,64 @@ void getTrimmedLine(char *line) {
 }
 
 
-void sortByDate(ride **rides, int len) {
+
+int compareRides(ride *fride, ride *sride, int criteria) {
+    switch (criteria) {
+        case r_ordina_date:
+            return (fride -> date > sride -> date || (fride -> date == sride -> date && fride -> depTime > sride -> depTime));
+        case r_ordina_codice:
+            return (strcmp(fride -> rideCode, sride -> rideCode) > 0);
+        case r_ordina_partenza:
+            return (strcmp(fride -> depPos, sride -> depPos) > 0);
+        case r_ordina_arrivo:
+            return (strcmp(fride -> destPos, sride -> destPos) > 0);
+    }
+}
+
+
+
+void sortByCriteria(ride **rides, int len, int value) {
     int i, j, r = len - 1, flag = 1;
     ride *temp;
-
     for (i = 0; i < r && flag; ++i) {
         flag = 0;
         for (j = 0; j < r - i; ++j) {
-            if (rides[j]->date > rides[j+1]->date || (rides[j]->date == rides[j+1]->date && rides[j]->depTime > rides[j+1]->depTime)) {
+            if (compareRides(rides[j], rides[j+1], value)) {
                 flag = 1;
                 temp = rides[j];
                 rides[j] = rides[j+1];
-                rides[j+1] = temp; 
+                rides[j+1] = temp;
             }
         }
     }
 }
 
 
-void sortByCode(ride **rides, int len) {
-    int i, j, r = len - 1, flag = 1;
-    ride *temp;
 
-    for (i = 0; i < r && flag; ++i) {
-        flag = 0;
-        for (j = 0; j < r - i; ++j) {
-            if (strcmp(rides[j]->rideCode, rides[j+1]->rideCode) > 0) {
-                flag = 1;
-                temp = rides[j];
-                rides[j] = rides[j+1];
-                rides[j+1] = temp; 
-            }
-        }
-    }
-}
-
-
-void sortByDep(ride **rides, int len) {
-    int i, j, r = len - 1, flag = 1;
-    ride *temp;
-
-    for (i = 0; i < r && flag; ++i) {
-        flag = 0;
-        for (j = 0; j < r - i; ++j) {
-            if (strcmp(rides[j]->depPos, rides[j+1]->depPos) > 0) {
-                flag = 1;
-                temp = rides[j];
-                rides[j] = rides[j+1];
-                rides[j+1] = temp; 
-            }
-        }
-    }
-}
-
-
-void sortByDest(ride **rides, int len) {
-    int i, j, r = len - 1, flag = 1;
-    ride *temp;
-
-    for (i = 0; i < r && flag; ++i) {
-        flag = 0;
-        for (j = 0; j < r - i; ++j) {
-            if (strcmp(rides[j]->destPos, rides[j+1]->destPos) > 0) {
-                flag = 1;
-                temp = rides[j];
-                rides[j] = rides[j+1];
-                rides[j+1] = temp; 
-            }
-        }
-    }
-}
-
-int *linearSearch(ride **rides, int len, char *name) {
-    int *idx = malloc((len + 1) * sizeof(int)), i, j;
-    for (i = 0, j = 0; i < len; ++i) {
-        if (strncmp(rides[i]->depPos, name, strlen(name)) == 0) {
-            idx[j++] = i;
+void linearSearch(int len, int nameLen, ride **rides, char *name, FILE *file) {
+    for (int i = 0; i < len; ++i) {
+        if (strncmp(rides[i] -> depPos, name, nameLen) == 0) {
+            printWithConversion(rides[i], file);
         } 
     }
-    idx[j] = -1;
-    return idx;
 }
 
 
-int *binarySearch(ride **rides, int len, char *name) {
-    int *idx = malloc((len + 1) * sizeof(int));
-    int i = 0, left = 0, right = len - 1, mid, cmpRes, sSize, j;
-    sSize = strlen(name);
 
-    while (left <= right) {
-        mid = left + (right - left) / 2;
-        cmpRes = strncmp(name, rides[mid]->depPos, sSize);
-        if (cmpRes == 0) {
-            idx[i++] = mid;
-            break;
-        } else if (cmpRes < 0) {
-            left = mid + 1;
-        } else {
-            right = mid - 1;
-        }
+void binarySearch(int left, int right, int nameLen, ride **rides, char *name, FILE *file) {
+    int m = (left + right)/2;
+    if (left > right) {
+        return;
     }
 
-
-    for (j = mid - 1; j > 0; --j) {
-        if (strncmp(rides[j]->depPos, name, sSize) == 0) {
-            idx[i++] = j;
-        }
+    if (strncmp(rides[m] -> depPos, name, nameLen) == 0) {
+        printWithConversion(rides[m], file);
     }
 
-    for (j = mid + 1; j < len; ++j) {
-        if (strncmp(rides[j]->depPos, name, sSize) == 0) {
-            idx[i++] = j;
-        }
+    if (strncmp(rides[m] -> depPos, name, nameLen) > 0) {
+        binarySearch(left, m - 1, nameLen, rides, name, file);
     }
-
-
-    idx[i] = -1;
-    return idx;
+    binarySearch(m + 1, right, nameLen, rides, name, file);
 }
 
 
@@ -402,16 +325,3 @@ void printWithConversion(ride *ride, FILE *file) {
         ride -> delay
     );
 }
-
-// char *getString() {
-//     char *string = malloc(sizeof(char)), c;
-//     int i, n = sizeof(char);
-//     for (i = 0; (c = getchar()) != '\n'; i++) {
-//         if (i + 1 >= n) {
-//             string = realloc(string, (n * 2));
-//         }
-//         string[i] = c;
-//     }
-//     string[i] = '\0';
-//     return string;
-// }
