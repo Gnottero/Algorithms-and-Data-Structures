@@ -8,139 +8,145 @@
 // [Begin] Typedefs
 
 typedef struct {
-    char rideCode[MAX_SIZE], initPos[MAX_SIZE], finalPos[MAX_SIZE];
-    int date, initTime, finalTime, delay;
+    char code[MAX_SIZE], initPos[MAX_SIZE], finPos[MAX_SIZE];
+    int date, initTime, finTime, delay;
 } route;
 
-
 typedef enum {
-    
+
     // Informazioni
     r_date,
     r_partenza,
     r_capolinea,
     r_ritardo,
     r_ritardo_tot,
-    
+
     // Ordinamento
     r_ordina_date,
     r_ordina_codice,
     r_ordina_partenza,
     r_ordina_arrivo,
-    
+
     // Ricerca
     r_ricerca_lineare,
     r_ricerca_dicotomica,
-    
+
     r_fine
 } comando_e;
 
 // [End] Typedefs
 
-
-
 // [Begin] Prototypes
 
-route **readFromFile(int *len);
-void printCmds(char **cmds);
-void getStringInput(char *input);
-comando_e leggiComando(char *output, char **cmds, char ***argArray, int *argNum);
+comando_e leggiComando(char **cmds, char ***argArray, char **input, char *output, int *argCount);
+
 int parseDates(char **argArray, int *fdate, int *sdate);
+int compareRides(const route *fride, const route *sride, int criteria);
 
-void execCommand(comando_e cmd, route **routes, route **dateOrd, route **codeOrd, route **initOrd, route **finalOrd, char **argArray, char *output, int len, int argNum);
-
-int compareRides(route *fride, route *sride, int criteria);
+void getStringInput(char *input);
+void readFromFile(int *len, route ***routes, route ***dateOrd, route ***codeOrd, route ***initOrd, route ***finOrd);
+void printCmds(char **cmds);
+void execCommand(comando_e cmd, route **routes, route **dateOrd, route **codeOrd, route **initOrd, route **finOrd, char **argArray, const char *output, int len, int argCount);
 void sortByCriteria(route **routes, int len, int value);
-
 void printWithConversion(route *route, FILE *file);
+void linearSearch(route **routes, const char *name, FILE *file, int len, int nameLen);
+void binarySearch(route **routes, const char *name, FILE *file, int left, int right, int nameLen);
+void freePtrArray(void **array, int len);
 
-void linearSearch(route **routes, char *name, FILE *file, int len, int nameLen);
-void binarySearch(route **routes, char *name, FILE *file, int left, int right, int nameLen);
-
-void createSortedCopy(route **routes, route ***nRoutes, int len, int criteria);
-
-void freeVec(void **routes, int len);
 // [End] Prototypes
 
-
 int main() {
-    int len, cmd, argNum;
-    char *commands[] = {"date", "partenza", "capolinea", "ritardo", "ritardo_tot", "ordina_date", "ordina_codice", "ordina_partenza", "ordina_arrivo", "ricerca_lineare", "ricerca_dicotomica", "fine"};
-    char **argArray, output[MAX_SIZE];
+    int len, argCount;
+    char *input, output[MAX_SIZE];
+    char *cmds[] = {"date", "partenza", "capolinea", "ritardo", "ritardo_tot", "ordina_date", "ordina_codice", "ordina_partenza", "ordina_arrivo", "ricerca_lineare", "ricerca_dicotomica", "fine"};
+    char **argArray;
+    route **routes, **dateOrd, **codeOrd, **initOrd, **finOrd;
 
-    route **routes = readFromFile(&len);
-    route **dateOrd, **codeOrd, **initOrd, **finalOrd;
-
-    createSortedCopy(routes, &dateOrd, len, r_ordina_date);
-    createSortedCopy(routes, &codeOrd, len, r_ordina_codice);
-    createSortedCopy(routes, &initOrd, len, r_ordina_partenza);
-    createSortedCopy(routes, &finalOrd, len, r_ordina_arrivo);
+    readFromFile(&len, &routes, &dateOrd, &codeOrd, &initOrd, &finOrd);
 
     if (routes != NULL) {
+        int cmd;
         printf("Inserire un comando tra i seguenti: \n");
-        printCmds(commands);
+        printCmds(cmds);
 
         do {
-            cmd = leggiComando(output, commands, &argArray, &argNum);
-            execCommand(cmd, routes, dateOrd, codeOrd, initOrd, finalOrd, argArray, output, len, argNum);
+            cmd = leggiComando(cmds, &argArray, &input, output, &argCount);
+            execCommand(cmd, routes, dateOrd, codeOrd, initOrd, finOrd, argArray, output, len, argCount);
         } while (cmd != -1 && cmd != r_fine);
     } else {
-        printf("Impossibile aprire il file richiesto");
         return -1;
     }
 
-    freeVec((void **) routes, len);
-    freeVec((void **) argArray, argNum);
+    freePtrArray((void **) routes, len);
+    freePtrArray((void **) argArray, argCount);
+    free(input);
+
+    free(dateOrd);
+    free(codeOrd);
+    free(initOrd);
+    free(finOrd);
 
     return 0;
 }
 
 
-route **readFromFile(int *len) {
-    FILE *file;
-    char fileName[MAX_SIZE];
-    int i = 0, flag = 0, year, month, day, initHour, initMin, initSec, finalHour, finalMin, finalSec; 
+void readFromFile(int *len, route ***routes, route ***dateOrd, route ***codeOrd, route ***initOrd, route ***finOrd) {
+    char fpName[MAX_SIZE];
+    int year, month, day, initHour, initMin, initSec, finHour, finMin, finSec;
 
-    // Get the name of the file
     printf("Inserire il nome del file contenente le corse: ");
-    getStringInput(fileName);
+    getStringInput(fpName);
 
-    file = fopen(fileName, "r");
-    if (file == NULL) return NULL;
+    FILE *fp = fopen(fpName, "r");
+    if (fp == NULL) return;
 
-    // Get the number of lines stored in the file. The return is added to limit the maximum amount of lines (as requested by the exercise)
-    fscanf(file, "%d", len);
-    if ((*len) > 1000) return NULL;
+    // Get the number of lines in the file. If greater than 1000 discard it
+    fscanf(fp, "%d", len);
 
-    route **routes = malloc((*len) * sizeof(void *));
+    if ((*len) > 1000) return;
 
-    for ( ; i < (*len); ++i) {
-        route *cRoute = malloc(sizeof(route));
-        if (fscanf(file, "%s %s %s %d/%d/%d %d:%d:%d %d:%d:%d %d", cRoute -> rideCode, cRoute -> initPos, cRoute -> finalPos, &year, &month, &day, &initHour, &initMin, &initSec, &finalHour, &finalMin, &finalSec, &cRoute -> delay) == 13) {
-            cRoute -> date = year * 372 + (month - 1) * 31 + day - 1;
-            cRoute -> initTime = initHour * 3600 + initMin * 60 + initSec;
-            cRoute -> finalTime = finalHour * 3600 + finalMin * 60 + finalSec;
-            routes[i] = cRoute;
+    *routes = malloc((*len) * sizeof(void *));
+    *dateOrd = malloc((*len) * sizeof(void *));
+    *codeOrd = malloc((*len) * sizeof(void *));
+    *initOrd = malloc((*len) * sizeof(void *));
+    *finOrd = malloc((*len) * sizeof(void *));
+
+    for (int i = 0; i < *len; ++i) {
+        // Riprova a leggere solo se fscanf restituisce il numero corretto di campi
+        route *temp = malloc(sizeof(route));
+        if (fscanf(fp, "%s %s %s %d/%d/%d %d:%d:%d %d:%d:%d %d",
+                   temp->code, temp->initPos, temp->finPos,
+                   &year, &month, &day,
+                   &initHour, &initMin, &initSec,
+                   &finHour, &finMin, &finSec, &temp->delay) == 13) {
+            temp->date = year * 372 + (month - 1) * 31 + (day - 1);
+            temp->initTime = initHour * 3600 + initMin * 60 + initSec;
+            temp->finTime = finHour * 3600 + finMin * 60 + finSec;
+            (*routes)[i] = temp;
         } else {
-            i = *len;
+            free(temp);
+            break;
         }
     }
 
-    fclose(file);
-    return routes;
+    memcpy(*dateOrd, *routes, (*len) * sizeof(route *));
+    memcpy(*codeOrd, *routes, (*len) * sizeof(route *));
+    memcpy(*initOrd, *routes, (*len) * sizeof(route *));
+    memcpy(*finOrd, *routes, (*len) * sizeof(route *));
+
+    fclose(fp);
 }
 
 
-comando_e leggiComando(char *output, char **cmds, char ***argArray, int *argNum) {
-    char *token, *input = malloc(MAX_SIZE * sizeof(char));
-    int len;
+comando_e leggiComando(char **cmds, char ***argArray, char **input, char *output, int *argCount) {
+    *input = malloc(MAX_SIZE * sizeof(char));
     *argArray = malloc(2 * sizeof(void *));
     comando_e result = -1;
 
     printf("Seleziona un comando: ");
-    getStringInput(input);
+    getStringInput(*input);
 
-    token = strtok(input, " ");
+    char *token = strtok(*input, " ");
 
     for (int i = 0; i < CMD_SIZE; ++i) {
         if (!strcmp(token, cmds[i])) {
@@ -149,8 +155,8 @@ comando_e leggiComando(char *output, char **cmds, char ***argArray, int *argNum)
         }
     }
 
-    for (*argNum = 0; token = strtok(NULL, " "); ++*argNum) {
-        (*argArray)[(*argNum)] = token;
+    for (*argCount = 0; (token = strtok(NULL, " ")); ++*argCount) {
+        (*argArray)[(*argCount)] = token;
     }
 
     if (result != r_fine && result != -1) {
@@ -162,13 +168,13 @@ comando_e leggiComando(char *output, char **cmds, char ***argArray, int *argNum)
 }
 
 
-void execCommand(comando_e cmd, route **routes, route **dateOrd, route **codeOrd, route **initOrd, route **finalOrd, char **argArray, char *output, int len, int argNum) {
-    int i = 0, delay = 0, fdate, sdate, nameLen;
+void execCommand(comando_e cmd, route **routes, route **dateOrd, route **codeOrd, route **initOrd, route **finOrd, char **argArray, const char *output, int len, int argCount) {
+    int i, delay = 0, fdate, sdate, nameLen;
     static int const argsNum[CMD_SIZE] = {2, 1, 1, 2, 1, 0, 0, 0, 0, 1, 1, 0};
     FILE *file = NULL;
 
-    if (cmd != -1 && argNum != argsNum[cmd]) {
-        printf("Il numero di argomenti richiesto per il comando è: %d. Gli argomenti forniti sono: %d. Input non valido\n", argsNum[cmd], argNum);
+    if (cmd != -1 && argCount != argsNum[cmd]) {
+        printf("Il numero di argomenti richiesto per il comando è: %d. Gli argomenti forniti sono: %d. Input non valido\n", argsNum[cmd], argCount);
         return;
     }
 
@@ -177,7 +183,7 @@ void execCommand(comando_e cmd, route **routes, route **dateOrd, route **codeOrd
         if (file == NULL) {
             printf("Errore nella creazione del file di log \n");
             return;
-        } 
+        }
     }
 
     if (cmd == r_date || cmd == r_ritardo) {
@@ -196,31 +202,31 @@ void execCommand(comando_e cmd, route **routes, route **dateOrd, route **codeOrd
 
     switch (cmd) {
         case r_date:
-            for ( ; i < len; ++i) {
+            for (i = 0; i < len; ++i) {
                 if (routes[i] -> date >= fdate && routes[i] -> date <= sdate) {
                     printWithConversion(routes[i], file);
                 }
             }
             break;
-        
+
         case r_partenza:
-            for ( ; i < len; ++i) {
+            for (i = 0; i < len; ++i) {
                 if (strcmp(routes[i] -> initPos, argArray[0]) == 0) {
                     printWithConversion(routes[i], file);
                 }
             }
             break;
-        
+
         case r_capolinea:
-            for ( ; i < len; ++i) {
-                if (strcmp(routes[i] -> finalPos, argArray[0]) == 0) {
+            for (i = 0; i < len; ++i) {
+                if (strcmp(routes[i] -> finPos, argArray[0]) == 0) {
                     printWithConversion(routes[i], file);
                 }
             }
             break;
 
         case r_ritardo:
-            for ( ; i < len; ++i) {
+            for (i = 0; i < len; ++i) {
                 if (routes[i] -> date >= fdate && routes[i] -> date <= sdate && routes[i] -> delay) {
                     printWithConversion(routes[i], file);
                 }
@@ -228,35 +234,35 @@ void execCommand(comando_e cmd, route **routes, route **dateOrd, route **codeOrd
             break;
 
         case r_ritardo_tot:
-            for ( ; i < len; ++i) {
-                if (strcmp(routes[i] -> rideCode, argArray[0]) == 0 && routes[i] -> delay) {
+            for (i = 0; i < len; ++i) {
+                if (strcmp(routes[i] -> code, argArray[0]) == 0 && routes[i] -> delay) {
                     delay += routes[i] -> delay;
                 }
             }
             fprintf(file ? file : stdout, "Il ritardo complessivo delle corse identificate dal codice %s è stato di %d minuti \n", argArray[0], delay);
             break;
 
-        case r_ordina_date :
-            for ( ; i < len; ++i) {
+        case r_ordina_date:
+            for (i = 0; i < len; ++i) {
                 printWithConversion(dateOrd[i], file);
             }
             break;
 
-        case r_ordina_codice: 
-            for ( ; i < len; ++i) {
+        case r_ordina_codice:
+            for (i = 0; i < len; ++i) {
                 printWithConversion(codeOrd[i], file);
             }
             break;
 
         case r_ordina_partenza:
-            for ( ; i < len; ++i) {
+            for (i = 0; i < len; ++i) {
                 printWithConversion(initOrd[i], file);
             }
             break;
-        
+
         case r_ordina_arrivo:
-            for ( ; i < len; ++i) {
-                printWithConversion(finalOrd[i], file);
+            for (i = 0; i < len; ++i) {
+                printWithConversion(finOrd[i], file);
             }
             break;
 
@@ -277,39 +283,33 @@ void execCommand(comando_e cmd, route **routes, route **dateOrd, route **codeOrd
 }
 
 
-int compareRides(route *fride, route *sride, int criteria) {
+int compareRides(const route *fride, const route *sride, const int criteria) {
     switch (criteria) {
         case r_ordina_date:
             if (fride -> date != sride -> date)
                 return fride -> date > sride -> date;
             return fride -> initTime > sride -> initTime;
         case r_ordina_codice:
-            return strcmp(fride -> rideCode, sride -> rideCode) > 0;
+            return strcmp(fride -> code, sride -> code) > 0;
         case r_ordina_partenza:
             return strcmp(fride -> initPos, sride-> initPos) > 0;
         case r_ordina_arrivo:
-            return strcmp(fride -> finalPos, sride -> finalPos) > 0;
+            return strcmp(fride -> finPos, sride -> finPos) > 0;
+        default: ;
     }
     return 0;
 }
 
 
-void createSortedCopy(route **routes, route ***nRoutes, int len, int criteria) {
-    *nRoutes = malloc(len * sizeof(void *));
-    memcpy(*nRoutes, routes, len * sizeof(void *));
-    sortByCriteria(*nRoutes, len, criteria);
-}
-
-
 void sortByCriteria(route **routes, int len, int value) {
-    int i, j, r = len - 1, flag = 1;
-    route *temp;
-    for (i = 0; i < r && flag; ++i) {
+    int flag = 1;
+    const int r = len - 1;
+    for (int i = 0; i < r && flag; ++i) {
         flag = 0;
-        for (j = 0; j < r - i; ++j) {
+        for (int j = 0; j < r - i; ++j) {
             if (compareRides(routes[j], routes[j+1], value)) {
                 flag = 1;
-                temp = routes[j];
+                route *temp = routes[j];
                 routes[j] = routes[j+1];
                 routes[j+1] = temp;
             }
@@ -318,27 +318,28 @@ void sortByCriteria(route **routes, int len, int value) {
 }
 
 
-void linearSearch(route **routes, char *name, FILE *file, int len, int nameLen) {
+void linearSearch(route **routes, const char *name, FILE *file, const int len, const int nameLen) {
     for (int i = 0; i < len; ++i) {
         if (strncmp(routes[i] -> initPos, name, nameLen) == 0) {
             printWithConversion(routes[i], file);
-        } 
+        }
     }
 }
 
 
-void binarySearch(route **routes, char *name, FILE *file, int left, int right, int nameLen) {
-    int mid, cmp, i;
-    
+void binarySearch(route **routes, const char *name, FILE *file, int left, int right, int nameLen) {
+    int mid = 0, i;
+
     // Find the first occurrence of the partial
     while (left <= right) {
         mid = left + (right - left) / 2;
-        cmp = strncmp(routes[mid] -> initPos, name, nameLen);
-        
+        const int cmp = strncmp(routes[mid]->initPos, name, nameLen);
+
         if (cmp == 0) {
             printWithConversion(routes[mid], file);
             break;
-        } else if (cmp < 0) {
+        }
+        if (cmp < 0) {
             left = mid + 1;
         } else {
             right = mid - 1;
@@ -357,15 +358,6 @@ void binarySearch(route **routes, char *name, FILE *file, int left, int right, i
             printWithConversion(routes[i], file);
         }
     }
-}
-
-
-void getStringInput(char *input) {
-    fgets(input, MAX_SIZE, stdin);
-    int strLen = strlen(input);
-
-    if (input[strLen - 1] == '\n')
-        input[strLen - 1] = '\0';
 }
 
 
@@ -394,10 +386,10 @@ void printCmds(char **cmds) {
 
 void printWithConversion(route *route, FILE *file) {
     fprintf(file ? file : stdout, "%s %s %s %04d/%02d/%02d %02d:%02d:%02d %02d:%02d:%02d %d \n",
-        route -> rideCode,
+        route -> code,
         route -> initPos,
-        route -> finalPos,
-        
+        route -> finPos,
+
         (route -> date)/372,
         (((route -> date) % 372) / 31) + 1,
         ((route -> date) % 31) + 1,
@@ -405,18 +397,28 @@ void printWithConversion(route *route, FILE *file) {
         (route -> initTime)/3600,
         ((route -> initTime) % 3600)/60,
         (route -> initTime) % 60,
-        
-        (route -> finalTime)/3600,
-        ((route -> finalTime) % 3600)/60,
-        (route -> finalTime) % 60,
-        
+
+        (route -> finTime)/3600,
+        ((route -> finTime) % 3600)/60,
+        (route -> finTime) % 60,
+
         route -> delay
     );
 }
 
-void freeVec(void **vec, int len) {
+
+void freePtrArray(void **array, int len) {
     for (int i = 0; i < len; ++i) {
-        free(vec[i]);
+        free(array[i]);
     }
-    free(vec);
+    free(array);
+}
+
+
+void getStringInput(char *input) {
+    fgets(input, MAX_SIZE, stdin);
+    int strLen = strlen(input);
+
+    if (input[strLen - 1] == '\n')
+        input[strLen - 1] = '\0';
 }
